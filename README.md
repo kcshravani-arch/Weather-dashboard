@@ -20,3 +20,5 @@ A professional weather application built for my **Student Project**.
 1. Enter a city name in the search bar.
 2. Click the arrow button or press 'Enter'.
 3. View current details and the 5-day forecast trend.
+
+My site is live at "https://kcshravani-arch.github.io/Weather-dashboard/"
