@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Weather & Forecast | Student Project</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0; padding: 0; box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), 
+                        url('https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1920&q=80');
+            background-size: cover; background-position: center; background-attachment: fixed;
+            min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px;
+        }
+
+        .container {
+            width: 100%; max-width: 600px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-radius: 30px; padding: 30px; color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 25px 45px rgba(0,0,0,0.3);
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .search { 
+            display: flex; align-items: center; 
+            margin-bottom: 0px; 
+            gap: 10px; 
+            transition: margin 0.5s ease;
+        }
+
+        /* When active, add space for the weather data */
+        .search.active { margin-bottom: 25px; }
+
+        .search input {
+            flex: 1; border: 0; outline: 0; background: rgba(255, 255, 255, 0.2);
+            color: #fff; padding: 12px 20px; height: 45px; border-radius: 25px; font-size: 16px;
+        }
+
+        .search button {
+            border: 0; background: #fff; border-radius: 50%; width: 45px; height: 45px;
+            cursor: pointer; color: #333; font-weight: bold; transition: 0.3s;
+            display: flex; align-items: center; justify-content: center; font-size: 20px;
+        }
+
+        .search button:hover { background: #00feba; transform: scale(1.1); }
+        .search button:active { transform: scale(0.9); }
+
+        .weather-info { 
+            text-align: center; 
+            display: block; 
+            max-height: 0; 
+            overflow: hidden; 
+            opacity: 0;
+            transition: max-height 0.8s ease, opacity 0.8s ease;
+        }
+
+        .weather-info.show {
+            max-height: 1200px; 
+            opacity: 1;
+        }
+
+        .weather-info h1 { font-size: 60px; font-weight: 500; }
+        .weather-info h2 { font-size: 30px; font-weight: 400; margin-bottom: 10px; }
+
+        .details {
+            display: flex; justify-content: space-around;
+            margin: 20px 0; padding: 15px 0; border-top: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .chart-section {
+            margin-top: 20px; background: rgba(0, 0, 0, 0.2);
+            padding: 15px; border-radius: 20px;
+        }
+
+        canvas { width: 100% !important; height: 220px !important; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="search" id="searchBar">
+            <input type="text" id="cityInput" placeholder="Search City..." spellcheck="false">
+            <button id="searchBtn" type="button">➔</button>
+        </div>
+
+        <div class="weather-info" id="weatherBox">
+            <h2 id="cityName">City</h2>
+            <h1 id="cityTemp">--°C</h1>
+            
+            <div class="details">
+                <div class="col">
+                    <p id="humidity">--%</p>
+                    <small>Humidity</small>
+                </div>
+                <div class="col">
+                    <p id="wind">-- km/h</p>
+                    <small>Wind Speed</small>
+                </div>
+            </div>
+
+            <div class="chart-section" id="chartBox">
+                <p id="timeLabel" style="margin-bottom: 10px; font-size: 14px; opacity: 0.8;">Predicted Temp (Daily Trend)</p>
+                <canvas id="forecastChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = "fbf9e7c5d864be41778c576501948de7"; 
+        let weatherChart;
+
+        const searchBtn = document.getElementById("searchBtn");
+        const cityInput = document.getElementById("cityInput");
+        const weatherBox = document.getElementById("weatherBox");
+        const searchBar = document.getElementById("searchBar");
+
+        async function updateDashboard(city) {
+            if (!city) return;
+
+            const currentUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${apiKey}`;
+            const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&units=metric&appid=${apiKey}`;
+
+            try {
+                // Fetch data
+                const [currentRes, forecastRes] = await Promise.all([
+                    fetch(currentUrl),
+                    fetch(forecastUrl)
+                ]);
+
+                if (!currentRes.ok) {
+                    alert("City not found. Please try again.");
+                    return;
+                }
+
+                const currentData = await currentRes.json();
+                const forecastData = await forecastRes.json();
+
+                // Update text values
+                document.getElementById("cityName").innerText = currentData.name;
+                document.getElementById("cityTemp").innerText = Math.round(currentData.main.temp) + "°C";
+                document.getElementById("humidity").innerText = currentData.main.humidity + "%";
+                document.getElementById("wind").innerText = currentData.wind.speed + " km/h";
+
+                // SAME TIME LOGIC
+                const now = new Date();
+                const currentHour = now.getHours();
+                const labels = ["Today"];
+                const temps = [currentData.main.temp];
+
+                // Filter for next 5 days at the same hour
+                const addedDays = new Set();
+                forecastData.list.forEach(item => {
+                    const fDate = new Date(item.dt * 1000);
+                    const fHour = fDate.getHours();
+                    const dayLabel = fDate.toLocaleDateString('en-US', { weekday: 'short' });
+
+                    if (fDate.getDate() !== now.getDate() && 
+                        Math.abs(fHour - currentHour) < 3 && 
+                        !addedDays.has(dayLabel)) {
+                        labels.push(dayLabel);
+                        temps.push(item.main.temp);
+                        addedDays.add(dayLabel);
+                    }
+                });
+
+                // Render the Chart
+                renderChart(labels.slice(0, 6), temps.slice(0, 6));
+
+                // Update Title
+                const timeString = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                document.getElementById("timeLabel").innerText = `Predicted Temp at approx ${timeString} for the next 5 days`;
+
+                // Show the content with animation
+                searchBar.classList.add("active");
+                weatherBox.classList.add("show");
+
+            } catch (error) {
+                console.error("Fetch error:", error);
+                alert("Error fetching weather data. Please check your connection.");
+            }
+        }
+
+        function renderChart(labels, temps) {
+            const ctx = document.getElementById('forecastChart').getContext('2d');
+            if (weatherChart) { weatherChart.destroy(); }
+            
+            weatherChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: temps,
+                        borderColor: '#00feba',
+                        backgroundColor: 'rgba(0, 254, 186, 0.2)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointBackgroundColor: "#fff",
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#fff' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#fff' } }
+                    }
+                }
+            });
+        }
+
+        // Event Listeners
+        searchBtn.onclick = () => {
+            updateDashboard(cityInput.value.trim());
+        };
+
+        cityInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                updateDashboard(cityInput.value.trim());
+            }
+        });
+    </script>
+</body>
+</html>
